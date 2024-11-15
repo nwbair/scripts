@@ -5,12 +5,12 @@
 
 ## Details
 
-Resorter.ps1 
-Required
+### Resorter.ps1 
+Required:
 ```powershell
 Install-Module -Name ImportExcel
 ```
-If ExecutionPolicy errors
+If ExecutionPolicy errors:
 ```powershell
 Set-ExecutionPolicy RemoteSigned
 ```
