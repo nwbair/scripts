@@ -10,6 +10,7 @@ $excelPath = "D:\testing.xlsx"
 # Define the path to the log files
 $logPath = "$PSScriptRoot\reorg.log"
 $errorLogPath = "$PSScriptRoot\reorg_errors.log"
+$errorExcelPath = "$PSScriptRoot\failed_files.xlsx"
 
 # Maximum number of concurrent jobs
 $maxConcurrentJobs = 10
@@ -70,15 +71,19 @@ foreach ($row in $fileList) {
             New-Item -ItemType Directory -Path $destinationDir
         }
 
-        try {
-            # Copy the file while preserving metadata
-            Copy-Item -Path $sourcePath -Destination $destinationPath -Force
-            $fileCreationTime = (Get-Item $sourcePath).CreationTime
-            (Get-Item $destinationPath).CreationTime = $fileCreationTime
-            Write-Log -message "Completed job: Successfully copied $sourcePath to $destinationPath"
-        }
-        catch {
-            Write-Log -message "Error: Failed to copy $sourcePath to $destinationPath"
+        if (Test-Path $sourcePath) {
+            try {
+                # Copy the file while preserving metadata
+                Copy-Item -Path $sourcePath -Destination $destinationPath -Force
+                $fileCreationTime = (Get-Item $sourcePath).CreationTime
+                (Get-Item $destinationPath).CreationTime = $fileCreationTime
+                Write-Log -message "Completed job: Successfully copied $sourcePath to $destinationPath"
+            }
+            catch {
+                Write-Log -message "Error: Failed to copy $sourcePath to $destinationPath - $_"
+            }
+        } else {
+            Write-Log -message "Error: Failed to copy $sourcePath to $destinationPath - Source file not found"
         }
     } -ArgumentList $sourcePath, $destinationPath, $tempLogPath
     
@@ -104,3 +109,22 @@ Remove-Item -Path $tempLogDir -Recurse
 # Announce the process completion
 Write-Log -message "All files copied successfully. File reorganization process completed."
 Write-Progress -Activity "Copying Files" -Status "Completed" -PercentComplete 100
+
+# Extract errors and write to Excel for reprocessing
+if (Test-Path $errorLogPath) {
+    $errorLines = Get-Content $errorLogPath | Select-String -Pattern "Error: Failed to copy"
+    $failedFiles = @()
+    foreach ($line in $errorLines) {
+        $line = $line -replace ".*Error: Failed to copy ", ""
+        $components = $line -split " to "
+        if ($components.Count -eq 2) {
+            $pathInfo = $components[1] -split " - "
+            $failedFiles += [PSCustomObject]@{
+                SourcePath       = $components[0]
+                DestinationPath  = $pathInfo[0]
+                Reason           = $pathInfo[1]
+            }
+        }
+    }
+    $failedFiles | Export-Excel -Path $errorExcelPath -WorksheetName "Failed Files"
+}
